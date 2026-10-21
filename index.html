@@ -1,0 +1,439 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#240d16">
+  <title>Maipa Deapati | Ticket Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    :root {
+      --wine: #4b1428;
+      --wine-dark: #240d16;
+      --gold: #d8b878;
+      --cream: #fff8e9;
+      --muted: #bcaeb2;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--wine-dark);
+      color: var(--cream);
+      font-family: Arial, sans-serif;
+    }
+
+    header {
+      padding: 25px 18px;
+      text-align: center;
+      background: linear-gradient(140deg, #54182d, #210b14);
+      border-bottom: 1px solid #8e6b46;
+    }
+
+    .eyebrow {
+      color: var(--gold);
+      font-size: 11px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-family: Georgia, serif;
+      font-size: clamp(25px, 6vw, 36px);
+      font-weight: normal;
+      margin: 12px 0 7px;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    main {
+      width: min(100% - 28px, 520px);
+      margin: 24px auto 40px;
+    }
+
+    .panel {
+      background: #351522;
+      border: 1px solid #76503f;
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      color: var(--gold);
+      font-size: 12px;
+      letter-spacing: 2px;
+      margin: 0 0 15px;
+      text-transform: uppercase;
+    }
+
+    #reader {
+      overflow: hidden;
+      border-radius: 12px;
+      background: #fff;
+      color: #241018;
+    }
+
+    #reader video {
+      border-radius: 8px;
+    }
+
+    #reader button,
+    #reader select {
+      font-size: 14px;
+      padding: 8px;
+      margin: 5px;
+    }
+
+    #reader a {
+      color: #6e2940;
+    }
+
+    .hint {
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
+      text-align: center;
+      margin: 14px 0 0;
+    }
+
+    button.action {
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      border: 1px solid var(--gold);
+      border-radius: 10px;
+      background: var(--gold);
+      color: #291018;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: transparent;
+      color: var(--cream);
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    #result {
+      display: none;
+      padding: 18px;
+      margin-top: 16px;
+      border-radius: 12px;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
+
+    #result h2 {
+      font-size: 22px;
+      margin: 0 0 10px;
+    }
+
+    #result p {
+      margin: 5px 0;
+      line-height: 1.5;
+    }
+
+    #result.success {
+      display: block;
+      background: #153b2b;
+      border: 1px solid #4ca979;
+    }
+
+    #result.used {
+      display: block;
+      background: #4b3415;
+      border: 1px solid #d8b878;
+    }
+
+    #result.error {
+      display: block;
+      background: #491d27;
+      border: 1px solid #d56a76;
+    }
+
+    #result.pending {
+      display: block;
+      background: #283044;
+      border: 1px solid #879cc9;
+    }
+
+    .status-label {
+      color: var(--gold);
+      font-size: 11px;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+
+    footer {
+      text-align: center;
+      color: #9d858d;
+      font-size: 11px;
+      padding: 0 20px 24px;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="eyebrow">Official Ticket Validation</div>
+    <h1>Maipa Deapati</h1>
+    <p>Teater Musikal · Check-in Scanner</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2 class="section-title">01 — Scan Ticket</h2>
+
+      <div id="reader"></div>
+
+      <p class="hint">
+        Izinkan akses kamera, lalu arahkan kamera ke QR pada tiket.
+        Pastikan koneksi internet aktif.
+      </p>
+
+      <button class="action" id="startBtn" onclick="startScanner()">
+        Mulai Scanner
+      </button>
+
+      <button class="action secondary" id="stopBtn"
+        onclick="stopScanner()" disabled>
+        Hentikan Scanner
+      </button>
+    </section>
+
+    <section class="panel">
+      <div class="status-label">SCAN RESULT</div>
+      <div id="result" role="status" aria-live="polite">
+        <h2>Siap melakukan scan</h2>
+        <p>Hasil validasi tiket akan muncul di sini.</p>
+      </div>
+
+      <button class="action secondary" id="nextBtn"
+        onclick="scanNext()" disabled>
+        Scan Tiket Berikutnya
+      </button>
+    </section>
+  </main>
+
+  <footer>
+    Maipa Deapati Ticketing System
+  </footer>
+
+  <script>
+    // URL Web App Apps Script
+    const API_URL =
+      "https://script.google.com/macros/s/AKfycbyGNIAQk0W5LxvhfZf0dC9zaRdQL29KG1nE7Xtpe_1ghx_vifxRN8bzVjbQdIM0Gonr/exec";
+
+    let scanner = null;
+    let scanning = false;
+    let busy = false;
+    let requestTimer = null;
+    let requestScript = null;
+    let requestId = 0;
+
+    const resultBox = document.getElementById("result");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const nextBtn = document.getElementById("nextBtn");
+
+    function showResult(type, title, message) {
+      resultBox.className = type;
+      resultBox.replaceChildren();
+
+      const heading = document.createElement("h2");
+      heading.textContent = title;
+
+      const paragraph = document.createElement("p");
+      paragraph.textContent = message;
+
+      resultBox.append(heading, paragraph);
+    }
+
+    async function startScanner() {
+      if (scanning) return;
+
+      if (typeof Html5Qrcode === "undefined") {
+        showResult("error", "Scanner gagal dimuat",
+          "Periksa koneksi internet, lalu muat ulang halaman.");
+        return;
+      }
+
+      if (!scanner) {
+        scanner = new Html5Qrcode("reader");
+      }
+
+      startBtn.disabled = true;
+
+      try {
+        await scanner.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1
+          },
+          onScanSuccess,
+          () => {}
+        );
+
+        scanning = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+
+        showResult("pending", "Scanner aktif",
+          "Arahkan kamera ke QR tiket.");
+      } catch (error) {
+        startBtn.disabled = false;
+        showResult("error", "Kamera tidak tersedia",
+          "Izinkan akses kamera dan pastikan halaman dibuka lewat HTTPS. " +
+          "Jika kamera masih gagal, tutup aplikasi lain yang menggunakannya.");
+      }
+    }
+
+    async function stopScanner() {
+      if (!scanner || !scanning) return;
+
+      try {
+        await scanner.stop();
+      } catch (error) {
+        console.warn("Scanner stop:", error);
+      }
+
+      scanning = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+
+    async function onScanSuccess(decodedText) {
+      if (busy) return;
+
+      busy = true;
+      nextBtn.disabled = true;
+
+      // Hentikan pembacaan kamera selama validasi berlangsung.
+      await stopScanner();
+
+      const token = decodedText.trim();
+
+      showResult("pending", "Memvalidasi tiket...",
+        "Sedang menghubungi database. Jangan tutup halaman.");
+
+      validateTicket(token);
+    }
+
+    function validateTicket(token) {
+      const id = ++requestId;
+
+      // Token tiket yang dibuat sistem ini berupa 40 karakter hex.
+      if (!/^[a-f0-9]{40}$/i.test(token)) {
+        busy = false;
+        showResult("error", "QR TIDAK VALID",
+          "QR ini bukan token tiket yang dikenali sistem.");
+        nextBtn.disabled = false;
+        return;
+      }
+
+      // Apps Script callback JSONP
+      const callbackName = "MaipaScannerCallback";
+
+      window[callbackName] = function(data) {
+        if (id !== requestId) return;
+
+        clearTimeout(requestTimer);
+        removeRequestScript();
+        delete window[callbackName];
+
+        busy = false;
+        nextBtn.disabled = false;
+
+        if (data && data.success === true) {
+          showResult("success", "CHECK-IN BERHASIL",
+            data.message || "Tiket valid. Check-in berhasil.");
+        } else {
+          const message = data && data.message
+            ? data.message
+            : "Tiket tidak dapat divalidasi.";
+
+          const lower = message.toLowerCase();
+
+          if (lower.includes("digunakan") ||
+              lower.includes("used") ||
+              lower.includes("pernah")) {
+            showResult("used", "TIKET SUDAH DIGUNAKAN", message);
+          } else {
+            showResult("error", "CHECK-IN DITOLAK", message);
+          }
+        }
+      };
+
+      const url = API_URL +
+        "?action=checkin&token=" + encodeURIComponent(token) +
+        "&t=" + Date.now();
+
+      requestScript = document.createElement("script");
+      requestScript.src = url;
+      requestScript.async = true;
+      requestScript.onerror = function() {
+        if (id !== requestId) return;
+
+        clearTimeout(requestTimer);
+        removeRequestScript();
+        delete window[callbackName];
+
+        busy = false;
+        nextBtn.disabled = false;
+
+        showResult("error", "KONEKSI GAGAL",
+          "Server tidak merespons. Periksa internet dan coba lagi.");
+      };
+
+      requestTimer = setTimeout(function() {
+        if (id !== requestId) return;
+
+        removeRequestScript();
+        delete window[callbackName];
+
+        busy = false;
+        nextBtn.disabled = false;
+
+        showResult("error", "SERVER TIMEOUT",
+          "Belum ada respons. Coba scan ulang dan cek koneksi internet.");
+      }, 15000);
+
+      document.body.appendChild(requestScript);
+    }
+
+    function removeRequestScript() {
+      if (requestScript) {
+        requestScript.remove();
+        requestScript = null;
+      }
+    }
+
+    async function scanNext() {
+      if (busy) return;
+
+      showResult("", "Siap melakukan scan",
+        "Arahkan kamera ke QR tiket berikutnya.");
+
+      nextBtn.disabled = true;
+      await startScanner();
+    }
+  </script>
+</body>
+</html>
