@@ -20,6 +20,7 @@ h2{font-size:12px;letter-spacing:2px;color:var(--gold);margin:0 0 15px}
 button,input{width:100%;padding:12px;border-radius:9px;border:1px solid #75515c;font:inherit}
 button{background:var(--red);border-color:var(--gold);color:white;font-weight:bold;cursor:pointer;margin-top:10px}
 button.secondary{background:transparent}
+button:disabled{opacity:.5}
 input{background:#fffaf3;color:#26141a;margin-top:8px}
 #reader{overflow:hidden;border-radius:10px}
 #result{margin-top:14px;padding:14px;border-radius:10px;white-space:pre-wrap;line-height:1.7;font-size:14px;overflow-wrap:anywhere}
@@ -47,143 +48,82 @@ input{background:#fffaf3;color:#26141a;margin-top:8px}
 
 <section class="panel">
 <h2>02 — INPUT TOKEN MANUAL</h2>
-<p>Gunakan jika kamera tidak dapat membaca QR. Token harus berasal dari e-ticket yang sah.</p>
+<p>Gunakan jika kamera tidak dapat membaca QR.</p>
 <input id="tokenInput" placeholder="Masukkan token 40 karakter">
 <button id="manualBtn">Validasi dan Check-in</button>
 <div id="result" class="neutral">Menunggu tiket...</div>
 </section>
-<p class="small">Pastikan akses kamera diizinkan oleh browser. Gunakan HTTPS pada GitHub Pages.</p>
+<p class="small">Kamera memerlukan HTTPS dan izin akses kamera dari browser.</p>
 </main>
 
 <script>
 const API_URL="https://script.google.com/macros/s/AKfycbyGNIAQk0W5LxvhfZf0dC9zaRdQL29KG1nE7Xtpe_1ghx_vifxRN8bzVjbQdIM0Gonr/exec";
-let scanner=null,processing=false;
-
+let scanner=null,processing=false,lastScanned="",lastScanTime=0;
 const $=id=>document.getElementById(id);
-function showResult(text,type){
-  $("result").className=type;
-  $("result").textContent=text;
-}
-function setCameraStatus(text){$("cameraStatus").textContent=text;}
+
+function showResult(text,type){$("result").className=type;$("result").textContent=text}
+function setCameraStatus(text){$("cameraStatus").textContent=text}
 
 function checkIn(token){
-  token=String(token||"").trim();
-  if(!/^[a-f0-9]{40}$/i.test(token)){
-    showResult("Token tidak valid. QR harus berisi token tiket yang sah.","bad");
-    return;
+ token=String(token||"").trim();
+ if(!/^[a-f0-9]{40}$/i.test(token)){showResult("Token tidak valid. Pastikan QR berasal dari e-ticket yang sah.","bad");return}
+ if(processing)return;
+ if(API_URL.includes("GANTI_DENGAN")){showResult("URL Web App belum diatur. Isi API_URL dengan URL deployment /exec.","bad");return}
+
+ processing=true;showResult("Menghubungi server dan memvalidasi tiket...","neutral");
+ const callback="MaipaCallback_"+Date.now()+"_"+Math.floor(Math.random()*100000);
+ const script=document.createElement("script");
+ let finished=false;
+ const timeout=setTimeout(()=>finish(null,"Koneksi ke server gagal atau timeout. Periksa URL /exec, izin deployment, dan versi Apps Script."),20000);
+
+ function finish(data,error){
+  if(finished)return;finished=true;clearTimeout(timeout);script.remove();
+  try{delete window[callback]}catch(e){window[callback]=undefined}
+  processing=false;
+  if(error){showResult(error,"bad");return}
+  if(!data||typeof data!=="object"){showResult("Respons server tidak valid.","bad");return}
+  if(data.success){
+   showResult("CHECK-IN BERHASIL\n\nNama: "+data.name+"\nKategori: "+data.category+"\nSesi: "+data.session+"\nBangku: "+data.seat+"\nWaktu: "+data.checkedInAt,"good");
+  }else if(data.alreadyUsed){
+   showResult("TIKET SUDAH DIGUNAKAN\n\nNama: "+(data.name||"-")+"\nKategori: "+(data.category||"-")+"\nSesi: "+(data.session||"-")+"\nBangku: "+(data.seat||"-")+"\nWaktu scan sebelumnya: "+(data.checkedInAt||"-"),"bad");
+  }else{
+   showResult("TIKET DITOLAK\n\n"+(data.message||"Tiket tidak valid."),"bad");
   }
-  if(processing)return;
-  if(API_URL.includes("GANTI_DENGAN")){
-    showResult("URL Web App belum diatur. Ganti API_URL di index.html.","bad");
-    return;
-  }
-
-  processing=true;
-  showResult("Memeriksa tiket ke server...","neutral");
-  const callback="MaipaCallback_"+Date.now();
-  const script=document.createElement("script");
-  const timeout=setTimeout(()=>{
-    cleanup();
-    processing=false;
-    showResult("Koneksi ke server gagal atau timeout. Periksa URL deployment dan akses Web App.","bad");
-  },20000);
-
-  function cleanup(){
-    clearTimeout(timeout);
-    try{delete window[callback]}catch(e){window[callback]=undefined}
-    script.remove();
-  }
-
-  window[callback]=data=>{
-    cleanup();
-    processing=false;
-    if(!data||typeof data!=="object"){
-      showResult("Server mengirim respons yang tidak valid.","bad");
-      return;
-    }
-    if(data.success){
-      showResult(
-        "CHECK-IN BERHASIL\n\n"+
-        "Nama: "+data.name+"\n"+
-        "Kategori: "+data.category+"\n"+
-        "Sesi: "+data.session+"\n"+
-        "Bangku: "+data.seat+"\n"+
-        "Waktu: "+data.checkedInAt,
-        "good"
-      );
-    }else if(data.alreadyUsed){
-      showResult(
-        "TIKET SUDAH DIGUNAKAN\n\n"+
-        "Nama: "+(data.name||"-")+"\n"+
-        "Kategori: "+(data.category||"-")+"\n"+
-        "Sesi: "+(data.session||"-")+"\n"+
-        "Bangku: "+(data.seat||"-")+"\n"+
-        "Waktu scan sebelumnya: "+(data.checkedInAt||"-"),
-        "bad"
-      );
-    }else{
-      showResult("TIKET DITOLAK\n\n"+(data.message||"Tiket tidak valid."),"bad");
-    }
-  };
-
-  script.onerror=()=>{
-    cleanup();
-    processing=false;
-    showResult("Gagal menghubungi server. Pastikan URL /exec benar dan deployment dapat diakses.","bad");
-  };
-  script.src=API_URL+
-    "?action=checkin&token="+encodeURIComponent(token)+
-    "&callback="+encodeURIComponent(callback)+
-    "&_="+Date.now();
-  document.body.appendChild(script);
+ }
+ window[callback]=data=>finish(data,null);
+ script.onerror=()=>finish(null,"Browser gagal memuat respons Apps Script. Periksa URL deployment dan akses Web App.");
+ const separator=API_URL.includes("?")?"&":"?";
+ script.src=API_URL+separator+"action=checkin&token="+encodeURIComponent(token)+"&callback="+encodeURIComponent(callback)+"&_="+Date.now();
+ document.body.appendChild(script);
 }
 
 async function startCamera(){
-  if(!window.Html5Qrcode){
-    setCameraStatus("Library kamera gagal dimuat. Periksa internet atau pemblokir konten.");
-    return;
-  }
-  try{
-    if(!scanner)scanner=new Html5Qrcode("reader");
-    setCameraStatus("Meminta izin kamera...");
-    await scanner.start(
-      {facingMode:"environment"},
-      {fps:10,qrbox:{width:240,height:240},aspectRatio:1},
-      decodedText=>{
-        if(processing)return;
-        const token=String(decodedText||"").trim();
-        $("tokenInput").value=token;
-        checkIn(token);
-      },
-      ()=>{}
-    );
-    setCameraStatus("Kamera aktif. Arahkan QR tiket ke kotak scanner.");
-  }catch(e){
-    setCameraStatus("Kamera gagal dibuka: "+(e.message||e)+". Periksa izin kamera browser.");
-  }
+ if(!window.Html5Qrcode){setCameraStatus("Library kamera gagal dimuat. Periksa internet atau pemblokir konten.");return}
+ try{
+  if(!scanner)scanner=new Html5Qrcode("reader");
+  setCameraStatus("Meminta izin kamera...");
+  await scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:240,height:240},aspectRatio:1},decoded=>{
+   const token=String(decoded||"").trim(),now=Date.now();
+   if(processing)return;
+   if(token===lastScanned&&now-lastScanTime<5000)return;
+   lastScanned=token;lastScanTime=now;$("tokenInput").value=token;checkIn(token);
+  },()=>{});
+  setCameraStatus("Kamera aktif. Arahkan QR tiket ke kotak scanner.");
+ }catch(e){setCameraStatus("Kamera gagal dibuka: "+(e.message||e)+". Periksa izin kamera browser.")}
 }
 async function stopCamera(){
-  if(scanner){
-    try{
-      if(scanner.isScanning)await scanner.stop();
-      setCameraStatus("Kamera dimatikan.");
-    }catch(e){setCameraStatus("Kamera sudah berhenti atau tidak aktif.")}
-  }
+ if(!scanner)return;
+ try{if(scanner.isScanning)await scanner.stop();setCameraStatus("Kamera dimatikan.")}
+ catch(e){setCameraStatus("Kamera tidak aktif atau sudah berhenti.")}
 }
 $("startBtn").addEventListener("click",startCamera);
 $("stopBtn").addEventListener("click",stopCamera);
 $("manualBtn").addEventListener("click",()=>checkIn($("tokenInput").value));
-$("tokenInput").addEventListener("keydown",e=>{
-  if(e.key==="Enter")checkIn($("tokenInput").value);
-});
+$("tokenInput").addEventListener("keydown",e=>{if(e.key==="Enter")checkIn($("tokenInput").value)});
 
-if(!window.isSecureContext){
-  setCameraStatus("Halaman perlu dibuka melalui HTTPS agar kamera bisa digunakan.");
-}else if(!window.Html5Qrcode){
-  setCameraStatus("Library scanner belum tersedia. Coba muat ulang halaman.");
-}else{
-  setCameraStatus("Scanner siap. Tekan Mulai Kamera.");
-}
+if(!window.isSecureContext)setCameraStatus("Halaman harus dibuka melalui HTTPS agar kamera bisa digunakan.");
+else if(!window.Html5Qrcode)setCameraStatus("Library scanner belum tersedia. Coba muat ulang halaman.");
+else setCameraStatus("Scanner siap. Tekan Mulai Kamera.");
 </script>
 </body>
 </html>
