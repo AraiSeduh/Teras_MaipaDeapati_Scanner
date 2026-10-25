@@ -1,11 +1,16 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Maipa Deapati — Ticket Scanner</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- Library QR: jsDelivr dulu, kalau gagal otomatis coba unpkg -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    if (!window.Html5Qrcode) {
+      document.write('<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"><\/script>');
+    }
+  </script>
   <style>
     :root{--wine:#6e090d;--gold:#e5b34b}
     *{box-sizing:border-box}
@@ -39,6 +44,10 @@
   </div>
 
   <div class="panel">
+    <button id="pingBtn" class="secondary" type="button">TES KONEKSI KE SERVER</button>
+
+    <hr class="divider">
+
     <button id="startBtn" type="button">MULAI SCAN</button>
     <button id="stopBtn" class="secondary" type="button">STOP KAMERA</button>
     <div id="reader"></div>
@@ -51,7 +60,7 @@
 
     <div id="result" role="status" aria-live="polite"></div>
     <div class="small">
-      Scanner membutuhkan HTTPS, izin kamera, dan URL Web App Apps Script yang bisa diakses publik.
+      Scanner membutuhkan HTTPS, izin kamera, dan URL Web App Apps Script yang bisa diakses publik (Who has access: Anyone).
       Token QR yang sama hanya bisa check-in satu kali.
     </div>
   </div>
@@ -61,11 +70,11 @@
 'use strict';
 
 /* =========================================================
-   PENTING: GANTI URL DI BAWAH DENGAN URL WEB APP /exec LU.
-   Apps Script > Deploy > Manage deployments > Web app URL.
-   Jangan gunakan URL editor yang berakhiran /edit.
+   PENTING: pastikan URL di bawah = URL Web App berakhiran /exec
+   (Apps Script > Deploy > Manage deployments > Web app URL).
    ========================================================= */
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyGNIAQk0W5LxvhfZf0dC9zaRdQL29KG1nE7Xtpe_1ghx_vifxRN8bzVjbQdIM0Gonr/exec';
+const TIMEOUT_MS = 25000;
 
 let scanner = null;
 let scanning = false;
@@ -74,11 +83,7 @@ const $ = id => document.getElementById(id);
 
 function esc(value){
   return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;',
-    "'":'&#39;'
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[c]));
 }
 
@@ -102,25 +107,21 @@ function showResult(kind, title, ticket){
   el.innerHTML = '<h2>' + esc(title) + '</h2>' + details;
 }
 
-function checkIn(token){
+function checkUrl(){
+  const url = WEB_APP_URL.trim();
+  if(!url.startsWith('https://script.google.com/macros/s/') || !url.endsWith('/exec')){
+    throw Error('WEB_APP_URL belum benar. Harus berupa URL Web App yang berakhiran /exec (bukan /edit atau /dev).');
+  }
+  return url;
+}
+
+/* Panggil Apps Script lewat JSONP (tidak kena CORS). */
+function callApi(params){
   return new Promise((resolve, reject) => {
-    const url = WEB_APP_URL.trim();
+    let url;
+    try{ url = checkUrl(); }catch(e){ reject(e); return; }
 
-    if(
-      !url.startsWith('https://script.google.com/macros/s/') ||
-      !url.endsWith('/exec') ||
-      url.includes('PASTE_URL')
-    ){
-      reject(Error(
-        'URL Web App belum diisi dengan benar. Buka index.html dan isi WEB_APP_URL dengan URL deployment yang berakhiran /exec.'
-      ));
-      return;
-    }
-
-    const callbackName =
-      'maipaCallback_' + Date.now() + '_' +
-      Math.floor(Math.random() * 100000);
-
+    const callbackName = 'maipaCb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
     const script = document.createElement('script');
     let finished = false;
     let timer;
@@ -128,8 +129,7 @@ function checkIn(token){
     function cleanup(){
       if(finished) return;
       finished = true;
-      try{ delete window[callbackName]; }
-      catch(e){ window[callbackName] = undefined; }
+      try{ delete window[callbackName]; }catch(e){ window[callbackName] = undefined; }
       script.remove();
       clearTimeout(timer);
     }
@@ -137,30 +137,51 @@ function checkIn(token){
     timer = setTimeout(() => {
       cleanup();
       reject(Error(
-        'Server tidak memberi respons dalam 20 detik. Pastikan deployment Web App dapat diakses oleh siapa saja, URL /exec benar, dan versi terbaru sudah di-deploy.'
+        'Server tidak merespons dalam ' + (TIMEOUT_MS/1000) + ' detik. ' +
+        'Kalau tadi sudah scan, scan ulang untuk memastikan (hasil "sudah digunakan" berarti check-in tadi berhasil).'
       ));
-    }, 20000);
+    }, TIMEOUT_MS);
 
-    window[callbackName] = data => {
-      cleanup();
-      resolve(data);
-    };
+    window[callbackName] = data => { cleanup(); resolve(data); };
 
     script.onerror = () => {
       cleanup();
       reject(Error(
-        'Browser gagal memuat endpoint Apps Script. Periksa URL /exec, akses deployment, dan apakah URL masih aktif.'
+        'Browser gagal memuat endpoint Apps Script. Penyebab paling umum: ' +
+        '(1) "Who has access" belum "Anyone", (2) URL /exec salah / deployment lama, ' +
+        '(3) kode belum di-deploy sebagai New version. Tekan "Tes Koneksi" untuk diagnosa.'
       ));
     };
 
-    script.src = url +
-      '?action=checkin' +
-      '&token=' + encodeURIComponent(token.trim()) +
-      '&callback=' + encodeURIComponent(callbackName) +
-      '&_=' + Date.now();
+    const qs = Object.keys(params)
+      .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
+      .join('&');
 
+    script.src = url + '?' + qs + '&callback=' + encodeURIComponent(callbackName) + '&_=' + Date.now();
     document.body.appendChild(script);
   });
+}
+
+function checkIn(token){
+  return callApi({action:'checkin', token:String(token).trim()});
+}
+
+async function pingServer(){
+  $('pingBtn').disabled = true;
+  showResult('used','Menghubungi server...');
+  try{
+    const r = await callApi({action:'ping'});
+    if(r && r.status === 'PONG'){
+      showResult('valid','Koneksi OK ✔', null);
+      $('result').innerHTML += '<div class="detail">' + esc(r.message || '') + '<br>Waktu server: ' + esc(r.time || '-') + '</div>';
+    }else{
+      showResult('invalid','Server merespons, tapi kode Apps Script belum versi terbaru. Deploy ulang sebagai New version.');
+    }
+  }catch(e){
+    showResult('invalid', e.message || 'Gagal menghubungi server.');
+  }finally{
+    $('pingBtn').disabled = false;
+  }
 }
 
 async function validateToken(token){
@@ -181,18 +202,18 @@ async function validateToken(token){
     const result = await checkIn(token);
 
     if(result && result.status === 'VALID' && result.success){
-      showResult('valid',result.message || 'CHECK-IN BERHASIL',result);
+      showResult('valid', result.message || 'CHECK-IN BERHASIL', result);
     }else if(result && result.status === 'USED'){
-      showResult('used',result.message || 'TIKET SUDAH DIGUNAKAN',result);
+      showResult('used', result.message || 'TIKET SUDAH DIGUNAKAN', result);
     }else{
-      showResult('invalid',(result && result.message) || 'TIKET TIDAK VALID',result);
+      showResult('invalid', (result && result.message) || 'TIKET TIDAK VALID', result);
     }
   }catch(e){
-    showResult('invalid',e.message || 'Gagal menghubungi server.');
+    showResult('invalid', e.message || 'Gagal menghubungi server.');
   }finally{
     processing = false;
     $('manualBtn').disabled = false;
-    $('startBtn').disabled = false;
+    $('startBtn').disabled = scanning;
   }
 }
 
@@ -210,7 +231,7 @@ async function startScanner(){
   try{
     await scanner.start(
       {facingMode:'environment'},
-      {fps:10,qrbox:{width:250,height:250}},
+      {fps:10, qrbox:{width:250,height:250}},
       async decodedText => {
         if(processing) return;
         await stopScanner();
@@ -239,11 +260,12 @@ async function stopScanner(){
   $('startBtn').disabled = false;
 }
 
-$('startBtn').addEventListener('click',startScanner);
-$('stopBtn').addEventListener('click',stopScanner);
-$('manualBtn').addEventListener('click',()=>validateToken($('manualToken').value));
-$('manualToken').addEventListener('keydown',e=>{
-  if(e.key==='Enter')validateToken($('manualToken').value);
+$('pingBtn').addEventListener('click', pingServer);
+$('startBtn').addEventListener('click', startScanner);
+$('stopBtn').addEventListener('click', stopScanner);
+$('manualBtn').addEventListener('click', () => validateToken($('manualToken').value));
+$('manualToken').addEventListener('keydown', e => {
+  if(e.key === 'Enter') validateToken($('manualToken').value);
 });
 </script>
 </body>
