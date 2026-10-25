@@ -31,8 +31,9 @@
       display: flex;
       justify-content: center;
       align-items: flex-start;
-      background:
-        radial-gradient(ellipse at top, #7b3038 0%, var(--maroon-dark) 72%);
+      background: radial-gradient(
+        ellipse at top, #7b3038 0%, var(--maroon-dark) 72%
+      );
       color: var(--ink);
       font-family: Arial, Helvetica, sans-serif;
     }
@@ -243,7 +244,7 @@
     }
 
     .primary-button.show { display: block; }
-    .primary-button:disabled { opacity: .6; }
+    .primary-button:disabled { opacity: .6; cursor: wait; }
 
     .footer {
       padding: 16px 20px;
@@ -286,7 +287,7 @@
       <div id="reader"></div>
 
       <p class="hint" id="scanHint">
-        Arahkan kamera belakang ke QR tiket. Validasi akan berjalan otomatis.
+        Arahkan kamera belakang ke QR tiket. Validasi berjalan otomatis.
       </p>
 
       <section class="result" id="result" aria-live="polite">
@@ -333,9 +334,10 @@
     let scanner = null;
     let isScannerRunning = false;
     let isProcessing = false;
+    let isStarting = false;
+    let apiRequestActive = false;
     let lastToken = "";
     let lastScanAt = 0;
-    let apiRequestActive = false;
 
     function setStatus(message, state = "normal") {
       $("scannerStatus").textContent = message;
@@ -387,14 +389,14 @@
 
       $("scanAgain").classList.add("show");
       $("scanHint").textContent =
-        "Hasil pemindaian selesai. Tekan tombol di bawah untuk scan tiket berikutnya.";
+        "Tekan tombol di bawah untuk memindai tiket berikutnya.";
     }
 
     function validateToken(token) {
       return /^[a-f0-9]{40}$/i.test(String(token || "").trim());
     }
 
-    // Callback sengaja tetap agar cocok dengan Code.gs versi awal.
+    // JSONP: callback harus cocok dengan nama yang dikirim ke Code.gs.
     function callCheckInAPI(token) {
       return new Promise((resolve, reject) => {
         if (apiRequestActive) {
@@ -416,7 +418,6 @@
             script.parentNode.removeChild(script);
           }
 
-          // Jangan menghapus callback jika permintaan sudah digantikan.
           if (window[callbackName] === handleResponse) {
             delete window[callbackName];
           }
@@ -439,29 +440,22 @@
         window[callbackName] = handleResponse;
 
         script.onerror = function () {
-          finish(
-            reject,
-            new Error(
-              "Browser tidak dapat memuat respons Apps Script. " +
-              "Periksa URL deployment, izin akses web app, dan koneksi internet."
-            )
-          );
+          finish(reject, new Error(
+            "Request ke Apps Script gagal dimuat oleh browser. " +
+            "Coba jaringan lain atau periksa URL deployment."
+          ));
         };
 
         timeoutId = setTimeout(function () {
-          finish(
-            reject,
-            new Error(
-              "Apps Script tidak mengirim respons. " +
-              "Periksa apakah Code.gs menerima parameter callback dan action=checkin."
-            )
-          );
+          finish(reject, new Error(
+            "Respons Apps Script tidak diterima dalam 20 detik. " +
+            "Callback JSONP tidak terpanggil. Periksa akses web app, " +
+            "URL deployment, dan jaringan HP."
+          ));
         }, 20000);
 
-        const separator = API_URL.includes("?") ? "&" : "?";
-
-        script.src = API_URL + separator +
-          "action=checkin" +
+        script.src = API_URL +
+          "?action=checkin" +
           "&token=" + encodeURIComponent(token) +
           "&callback=" + encodeURIComponent(callbackName) +
           "&_=" + Date.now();
@@ -477,21 +471,22 @@
         await scanner.stop();
       } catch (error) {
         console.warn("Scanner stop:", error);
+      } finally {
+        isScannerRunning = false;
       }
-
-      isScannerRunning = false;
     }
 
     async function onQrDetected(decodedText) {
       const token = String(decodedText || "").trim();
       const now = Date.now();
 
-      if (isProcessing) return;
+      if (isProcessing || isStarting) return;
       if (token === lastToken && now - lastScanAt < 5000) return;
 
       isProcessing = true;
       lastToken = token;
       lastScanAt = now;
+      $("scanAgain").classList.remove("show");
 
       setStatus("QR terbaca. Memvalidasi tiket...", "normal");
 
@@ -503,7 +498,8 @@
             success: false,
             alreadyUsed: false,
             message:
-              "Format QR tidak sesuai dengan token tiket. Pastikan QR berasal dari tiket resmi Maipa Deapati."
+              "Format QR tidak sesuai dengan token tiket. " +
+              "Pastikan QR berasal dari tiket resmi Maipa Deapati."
           });
 
           setStatus("Format QR tidak dikenali.", "error");
@@ -513,7 +509,7 @@
         const response = await callCheckInAPI(token);
 
         if (!response || typeof response.success !== "boolean") {
-          throw new Error("Format respons dari Apps Script tidak dikenali.");
+          throw new Error("Format respons Apps Script tidak dikenali.");
         }
 
         showResult(response);
@@ -539,51 +535,54 @@
         console.error("Check-in error:", error);
 
       } finally {
+        // FIX UTAMA: buka kembali kunci proses agar tombol bisa bekerja.
+        isProcessing = false;
         $("scanAgain").classList.add("show");
+        $("scanAgain").disabled = false;
       }
     }
 
     async function startScanner() {
-      if (isProcessing) return;
+      // Mencegah dua proses start berjalan bersamaan.
+      if (isStarting || isProcessing) return;
 
+      isStarting = true;
+      $("scanAgain").disabled = true;
       $("result").className = "result";
       $("scanAgain").classList.remove("show");
-      $("scanAgain").disabled = false;
-
-      if (!window.isSecureContext) {
-        setStatus("Scanner membutuhkan koneksi HTTPS.", "error");
-        showResult({
-          success: false,
-          message: "Buka halaman scanner melalui URL HTTPS GitHub Pages."
-        });
-        return;
-      }
-
-      if (!navigator.mediaDevices ||
-          !navigator.mediaDevices.getUserMedia) {
-        setStatus("Browser tidak mendukung kamera.", "error");
-        showResult({
-          success: false,
-          message: "Gunakan browser modern yang mendukung akses kamera."
-        });
-        return;
-      }
-
-      setStatus("Mengaktifkan kamera belakang...", "normal");
 
       try {
-        if (!window.Html5Qrcode) {
+        if (!window.isSecureContext) {
           throw new Error(
-            "Library scanner gagal dimuat. Periksa koneksi internet lalu muat ulang halaman."
+            "Scanner membutuhkan HTTPS. Buka halaman melalui GitHub Pages."
           );
         }
+
+        if (!navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia) {
+          throw new Error(
+            "Browser tidak mendukung kamera. Gunakan Chrome terbaru."
+          );
+        }
+
+        if (!window.Html5Qrcode) {
+          throw new Error(
+            "Library scanner gagal dimuat. Periksa internet lalu muat ulang."
+          );
+        }
+
+        setStatus("Mengaktifkan kamera belakang...", "normal");
 
         if (!scanner) {
           scanner = new Html5Qrcode("reader");
         }
 
-        // Tidak menampilkan pilihan kamera.
-        // Kamera belakang diprioritaskan untuk pemindaian tiket.
+        // Jika scanner ternyata masih berjalan, hentikan sebelum restart.
+        if (isScannerRunning) {
+          await scanner.stop();
+          isScannerRunning = false;
+        }
+
         await scanner.start(
           { facingMode: "environment" },
           {
@@ -596,12 +595,14 @@
           },
           onQrDetected,
           function () {
-            // QR belum terbaca pada frame ini.
+            // Frame tanpa QR diabaikan.
           }
         );
 
         isScannerRunning = true;
         setStatus("Kamera aktif. Siap scan tiket.", "ready");
+        $("scanHint").textContent =
+          "Arahkan kamera belakang ke QR tiket. Validasi berjalan otomatis.";
 
       } catch (error) {
         isScannerRunning = false;
@@ -611,36 +612,31 @@
           : "Kamera gagal diaktifkan.";
 
         if (error && error.name === "NotAllowedError") {
-          message = "Izin kamera ditolak. Izinkan kamera untuk situs ini di pengaturan Chrome.";
+          message = "Izin kamera ditolak. Izinkan kamera di pengaturan Chrome.";
         } else if (error && error.name === "NotFoundError") {
           message = "Kamera tidak ditemukan pada perangkat.";
         } else if (error && error.name === "NotReadableError") {
-          message = "Kamera sedang digunakan aplikasi lain. Tutup aplikasi tersebut lalu coba lagi.";
+          message = "Kamera sedang digunakan aplikasi lain. Tutup aplikasi itu lalu coba lagi.";
         }
 
         setStatus("Scanner gagal diaktifkan.", "error");
-
-        showResult({
-          success: false,
-          message: message
-        });
-
+        showResult({ success: false, message });
         console.error("Camera error:", error);
+
+      } finally {
+        isStarting = false;
+        $("scanAgain").disabled = false;
       }
     }
 
     $("scanAgain").addEventListener("click", async function () {
-      if (isProcessing) return;
+      if (isStarting || isProcessing) return;
 
-      $("scanAgain").disabled = true;
+      // Reset agar QR yang sama bisa dipindai ulang jika diperlukan.
       lastToken = "";
       lastScanAt = 0;
 
-      try {
-        await startScanner();
-      } finally {
-        $("scanAgain").disabled = false;
-      }
+      await startScanner();
     });
 
     window.addEventListener("load", startScanner);
