@@ -19,7 +19,7 @@
     .hero{background:linear-gradient(120deg,#6b090e,#9e2e17);color:#fff4dc;padding:20px;border-radius:16px;margin-bottom:16px}
     h1{font-size:23px;margin:0 0 6px}
     .muted{font-size:13px;opacity:.9;line-height:1.5}
-    .panel{background:white;padding:16px;border-radius:16px;box-shadow:0 5px 22px #321a1012}
+    .panel{background:white;padding:16px;border-radius:16px;box-shadow:0 5px 22px #321a1012;margin-bottom:16px}
     button,input{width:100%;padding:13px;border:0;border-radius:10px;font-size:15px;margin-top:12px}
     input{border:1px solid #d8c9bd}
     button{background:var(--wine);color:white;font-weight:bold;cursor:pointer}
@@ -34,6 +34,9 @@
     .detail{font-size:15px;line-height:1.8}
     .small{font-size:12px;color:#65564e;line-height:1.6;margin-top:12px}
     .divider{border:0;border-top:1px solid #eadfd6;margin:18px 0}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    details summary{cursor:pointer;font-weight:bold;font-size:14px}
+    #urlInput{font-size:12px}
   </style>
 </head>
 <body>
@@ -44,10 +47,6 @@
   </div>
 
   <div class="panel">
-    <button id="pingBtn" class="secondary" type="button">TES KONEKSI KE SERVER</button>
-
-    <hr class="divider">
-
     <button id="startBtn" type="button">MULAI SCAN</button>
     <button id="stopBtn" class="secondary" type="button">STOP KAMERA</button>
     <div id="reader"></div>
@@ -60,9 +59,36 @@
 
     <div id="result" role="status" aria-live="polite"></div>
     <div class="small">
-      Scanner membutuhkan HTTPS, izin kamera, dan URL Web App Apps Script yang bisa diakses publik (Who has access: Anyone).
+      Scanner membutuhkan HTTPS, izin kamera, dan Web App Apps Script dengan akses "Anyone".
       Token QR yang sama hanya bisa check-in satu kali.
     </div>
+  </div>
+
+  <div class="panel">
+    <details>
+      <summary>Pengaturan &amp; diagnosa koneksi</summary>
+
+      <label for="urlInput" class="small" style="display:block;margin-top:14px"><b>URL Web App (harus berakhiran /exec)</b></label>
+      <input id="urlInput" type="text" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec">
+      <div class="two">
+        <button id="saveUrlBtn" type="button">SIMPAN URL</button>
+        <button id="resetUrlBtn" class="secondary" type="button">PAKAI URL BAWAAN</button>
+      </div>
+
+      <hr class="divider">
+
+      <div class="two">
+        <button id="pingBtn" class="secondary" type="button">TES KONEKSI</button>
+        <button id="openTestBtn" class="secondary" type="button">BUKA TES DI TAB BARU</button>
+      </div>
+      <div class="small">
+        "Buka tes di tab baru" membuka URL ?action=ping langsung.<br>
+        • Muncul JSON <code>{"success":true,"status":"PONG"...}</code> → URL benar.<br>
+        • Muncul halaman login Google → Who has access belum "Anyone".<br>
+        • Muncul halaman 404 / error → URL salah atau deployment lama.<br>
+        Jangan pakai URL yang berakhiran <code>/dev</code> atau <code>/edit</code>.
+      </div>
+    </details>
   </div>
 </div>
 
@@ -70,16 +96,27 @@
 'use strict';
 
 /* =========================================================
-   PENTING: pastikan URL di bawah = URL Web App berakhiran /exec
-   (Apps Script > Deploy > Manage deployments > Web app URL).
+   URL bawaan. Bisa diganti dari halaman (menu "Pengaturan &
+   diagnosa koneksi") tanpa edit kode. Pastikan berakhiran /exec.
    ========================================================= */
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyGNIAQk0W5LxvhfZf0dC9zaRdQL29KG1nE7Xtpe_1ghx_vifxRN8bzVjbQdIM0Gonr/exec';
+const DEFAULT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyGNIAQk0W5LxvhfZf0dC9zaRdQL29KG1nE7Xtpe_1ghx_vifxRN8bzVjbQdIM0Gonr/exec';
+const STORAGE_KEY = 'maipaWebAppUrl';
 const TIMEOUT_MS = 25000;
+const URL_PATTERN = /^https:\/\/script\.google\.com\/(a\/[^\/]+\/)?macros\/s\/[^\/?#]+\/exec$/;
 
 let scanner = null;
 let scanning = false;
 let processing = false;
 const $ = id => document.getElementById(id);
+
+function getSavedUrl(){
+  try{ return (localStorage.getItem(STORAGE_KEY) || '').trim(); }
+  catch(e){ return ''; }
+}
+
+function getWebAppUrl(){
+  return getSavedUrl() || DEFAULT_WEB_APP_URL.trim();
+}
 
 function esc(value){
   return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
@@ -108,9 +145,9 @@ function showResult(kind, title, ticket){
 }
 
 function checkUrl(){
-  const url = WEB_APP_URL.trim();
-  if(!url.startsWith('https://script.google.com/macros/s/') || !url.endsWith('/exec')){
-    throw Error('WEB_APP_URL belum benar. Harus berupa URL Web App yang berakhiran /exec (bukan /edit atau /dev).');
+  const url = getWebAppUrl();
+  if(!URL_PATTERN.test(url)){
+    throw Error('URL Web App tidak valid. Harus berupa URL Web App yang berakhiran /exec (bukan /edit atau /dev).');
   }
   return url;
 }
@@ -147,9 +184,11 @@ function callApi(params){
     script.onerror = () => {
       cleanup();
       reject(Error(
-        'Browser gagal memuat endpoint Apps Script. Penyebab paling umum: ' +
-        '(1) "Who has access" belum "Anyone", (2) URL /exec salah / deployment lama, ' +
-        '(3) kode belum di-deploy sebagai New version. Tekan "Tes Koneksi" untuk diagnosa.'
+        'Browser gagal memuat endpoint Apps Script. Kemungkinan: ' +
+        '(1) URL yang dipakai /dev atau deployment lama, ' +
+        '(2) "Who has access" belum "Anyone", ' +
+        '(3) kode belum di-deploy sebagai New version. ' +
+        'Buka menu "Pengaturan & diagnosa koneksi" lalu tekan "Buka tes di tab baru".'
       ));
     };
 
@@ -172,7 +211,7 @@ async function pingServer(){
   try{
     const r = await callApi({action:'ping'});
     if(r && r.status === 'PONG'){
-      showResult('valid','Koneksi OK ✔', null);
+      showResult('valid','Koneksi OK ✔');
       $('result').innerHTML += '<div class="detail">' + esc(r.message || '') + '<br>Waktu server: ' + esc(r.time || '-') + '</div>';
     }else{
       showResult('invalid','Server merespons, tapi kode Apps Script belum versi terbaru. Deploy ulang sebagai New version.');
@@ -182,6 +221,35 @@ async function pingServer(){
   }finally{
     $('pingBtn').disabled = false;
   }
+}
+
+function openTestTab(){
+  try{
+    const url = checkUrl();
+    window.open(url + '?action=ping', '_blank', 'noopener');
+  }catch(e){
+    showResult('invalid', e.message);
+  }
+}
+
+function saveUrl(){
+  const v = $('urlInput').value.trim();
+  if(!URL_PATTERN.test(v)){
+    showResult('invalid','URL tidak valid. Harus diawali https://script.google.com/macros/s/ dan berakhiran /exec.');
+    return;
+  }
+  try{ localStorage.setItem(STORAGE_KEY, v); }
+  catch(e){
+    showResult('invalid','Browser tidak mengizinkan penyimpanan lokal. Edit DEFAULT_WEB_APP_URL di index.html.');
+    return;
+  }
+  showResult('valid','URL disimpan. Tekan "Tes Koneksi" untuk mencoba.');
+}
+
+function resetUrl(){
+  try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+  $('urlInput').value = DEFAULT_WEB_APP_URL.trim();
+  showResult('used','Memakai URL bawaan dari index.html.');
 }
 
 async function validateToken(token){
@@ -260,7 +328,11 @@ async function stopScanner(){
   $('startBtn').disabled = false;
 }
 
+$('urlInput').value = getWebAppUrl();
+$('saveUrlBtn').addEventListener('click', saveUrl);
+$('resetUrlBtn').addEventListener('click', resetUrl);
 $('pingBtn').addEventListener('click', pingServer);
+$('openTestBtn').addEventListener('click', openTestTab);
 $('startBtn').addEventListener('click', startScanner);
 $('stopBtn').addEventListener('click', stopScanner);
 $('manualBtn').addEventListener('click', () => validateToken($('manualToken').value));
