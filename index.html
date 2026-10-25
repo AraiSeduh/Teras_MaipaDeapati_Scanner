@@ -37,6 +37,7 @@
     .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     details summary{cursor:pointer;font-weight:bold;font-size:14px}
     #urlInput{font-size:12px}
+    code{background:#f3ece2;padding:1px 4px;border-radius:4px}
   </style>
 </head>
 <body>
@@ -82,10 +83,11 @@
         <button id="openTestBtn" class="secondary" type="button">BUKA TES DI TAB BARU</button>
       </div>
       <div class="small">
-        "Buka tes di tab baru" membuka URL ?action=ping langsung.<br>
+        "Buka tes di tab baru" membuka URL <code>?action=ping</code> langsung.<br>
         • Muncul JSON <code>{"success":true,"status":"PONG"...}</code> → URL benar.<br>
         • Muncul halaman login Google → Who has access belum "Anyone".<br>
-        • Muncul halaman 404 / error → URL salah atau deployment lama.<br>
+        • Muncul halaman Generator → belum deploy New version.<br>
+        • Muncul 404 / error → URL salah.<br>
         Jangan pakai URL yang berakhiran <code>/dev</code> atau <code>/edit</code>.
       </div>
     </details>
@@ -113,15 +115,18 @@ function getSavedUrl(){
   try{ return (localStorage.getItem(STORAGE_KEY) || '').trim(); }
   catch(e){ return ''; }
 }
-
 function getWebAppUrl(){
   return getSavedUrl() || DEFAULT_WEB_APP_URL.trim();
 }
-
 function esc(value){
   return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[c]));
+}
+function newRid(){
+  const a = new Uint8Array(12);
+  (window.crypto || window.msCrypto).getRandomValues(a);
+  return Array.from(a, b => b.toString(16).padStart(2,'0')).join('');
 }
 
 function showResult(kind, title, ticket){
@@ -152,12 +157,61 @@ function checkUrl(){
   return url;
 }
 
-/* Panggil Apps Script lewat JSONP (tidak kena CORS). */
-function callApi(params){
-  return new Promise((resolve, reject) => {
-    let url;
-    try{ url = checkUrl(); }catch(e){ reject(e); return; }
+function buildQuery(params){
+  return Object.keys(params)
+    .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
+    .join('&');
+}
 
+/* ---------- Jalur 1: fetch (bisa membaca isi balasan untuk diagnosa) ---------- */
+async function fetchApi(url, params){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  let res, text;
+
+  try{
+    res = await fetch(url + '?' + buildQuery(params) + '&_=' + Date.now(), {
+      method: 'GET',
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: ctrl.signal
+    });
+    text = await res.text();
+  }catch(e){
+    clearTimeout(timer);
+    const err = new Error(e && e.name === 'AbortError' ? 'timeout' : 'network');
+    err.kind = e && e.name === 'AbortError' ? 'timeout' : 'network';
+    throw err;
+  }
+  clearTimeout(timer);
+
+  try{
+    return JSON.parse(text);
+  }catch(e){
+    const err = new Error(explainBadResponse(res.status, text));
+    err.kind = 'bad';
+    throw err;
+  }
+}
+
+function explainBadResponse(status, text){
+  const t = String(text || '');
+  if(/accounts\.google\.com|ServiceLogin|Sign in/i.test(t)){
+    return 'Server meminta login Google. Di Apps Script: Deploy > Manage deployments > Edit > "Who has access" harus "Anyone", lalu deploy New version.';
+  }
+  if(/Maipa Deapati Ticket Generator/i.test(t)){
+    return 'URL ini masih menjalankan kode LAMA (yang muncul halaman Generator). Deploy > Manage deployments > Edit > Version: New version > Deploy.';
+  }
+  if(/Sorry, unable to open the file|Page Not Found|404/i.test(t)){
+    return 'URL Web App tidak ditemukan (404). Salin ulang URL /exec dari Manage deployments.';
+  }
+  const snippet = t.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,160);
+  return 'Balasan server bukan JSON (HTTP ' + status + '). Cuplikan: ' + (snippet || '(kosong)');
+}
+
+/* ---------- Jalur 2: JSONP (cadangan kalau fetch diblokir browser) ---------- */
+function jsonpApi(url, params){
+  return new Promise((resolve, reject) => {
     const callbackName = 'maipaCb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
     const script = document.createElement('script');
     let finished = false;
@@ -173,48 +227,66 @@ function callApi(params){
 
     timer = setTimeout(() => {
       cleanup();
-      reject(Error(
-        'Server tidak merespons dalam ' + (TIMEOUT_MS/1000) + ' detik. ' +
-        'Kalau tadi sudah scan, scan ulang untuk memastikan (hasil "sudah digunakan" berarti check-in tadi berhasil).'
-      ));
+      const err = new Error('timeout'); err.kind = 'timeout'; reject(err);
     }, TIMEOUT_MS);
 
     window[callbackName] = data => { cleanup(); resolve(data); };
 
     script.onerror = () => {
       cleanup();
-      reject(Error(
-        'Browser gagal memuat endpoint Apps Script. Kemungkinan: ' +
-        '(1) URL yang dipakai /dev atau deployment lama, ' +
-        '(2) "Who has access" belum "Anyone", ' +
-        '(3) kode belum di-deploy sebagai New version. ' +
-        'Buka menu "Pengaturan & diagnosa koneksi" lalu tekan "Buka tes di tab baru".'
-      ));
+      const err = new Error('script-error'); err.kind = 'script'; reject(err);
     };
 
-    const qs = Object.keys(params)
-      .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
-      .join('&');
-
-    script.src = url + '?' + qs + '&callback=' + encodeURIComponent(callbackName) + '&_=' + Date.now();
+    script.src = url + '?' + buildQuery(params) +
+      '&callback=' + encodeURIComponent(callbackName) + '&_=' + Date.now();
     document.body.appendChild(script);
   });
 }
 
-function checkIn(token){
-  return callApi({action:'checkin', token:String(token).trim()});
+/* ---------- Gabungan: fetch dulu, JSONP kalau fetch gagal jaringan/CORS ---------- */
+async function callApi(params){
+  const url = checkUrl();
+  const p = Object.assign({}, params);
+  if(!p.rid) p.rid = newRid();
+
+  let via = 'fetch';
+  try{
+    const data = await fetchApi(url, p);
+    return { data, via };
+  }catch(e1){
+    if(e1.kind === 'bad') throw e1;          // server menjawab tapi bukan JSON -> pesan sudah jelas
+    if(e1.kind === 'timeout' && p.action === 'checkin'){
+      // tetap coba JSONP, rid yang sama mencegah check-in ganda
+    }
+    try{
+      const data = await jsonpApi(url, p);
+      via = 'JSONP';
+      return { data, via };
+    }catch(e2){
+      const err = new Error(
+        'Browser tidak bisa terhubung ke Apps Script (fetch dan JSONP sama-sama gagal). ' +
+        'Penyebab paling mungkin: (1) "Who has access" belum "Anyone", ' +
+        '(2) URL yang dipakai /dev atau deployment lama, (3) jaringan/ad-blocker memblokir script.google.com. ' +
+        'Buka "Pengaturan & diagnosa koneksi" > "Buka tes di tab baru" untuk melihat jawaban server sebenarnya.'
+      );
+      err.kind = 'unreachable';
+      throw err;
+    }
+  }
 }
 
 async function pingServer(){
   $('pingBtn').disabled = true;
   showResult('used','Menghubungi server...');
   try{
-    const r = await callApi({action:'ping'});
-    if(r && r.status === 'PONG'){
+    const { data, via } = await callApi({action:'ping'});
+    if(data && data.status === 'PONG'){
       showResult('valid','Koneksi OK ✔');
-      $('result').innerHTML += '<div class="detail">' + esc(r.message || '') + '<br>Waktu server: ' + esc(r.time || '-') + '</div>';
+      $('result').innerHTML += '<div class="detail">' + esc(data.message || '') +
+        '<br>Waktu server: ' + esc(data.time || '-') +
+        '<br>Jalur: ' + esc(via) + '</div>';
     }else{
-      showResult('invalid','Server merespons, tapi kode Apps Script belum versi terbaru. Deploy ulang sebagai New version.');
+      showResult('invalid','Server merespons, tapi bukan versi kode terbaru. Deploy ulang sebagai New version.');
     }
   }catch(e){
     showResult('invalid', e.message || 'Gagal menghubungi server.');
@@ -267,7 +339,7 @@ async function validateToken(token){
   showResult('used','Memvalidasi tiket...');
 
   try{
-    const result = await checkIn(token);
+    const { data: result } = await callApi({action:'checkin', token, rid:newRid()});
 
     if(result && result.status === 'VALID' && result.success){
       showResult('valid', result.message || 'CHECK-IN BERHASIL', result);
