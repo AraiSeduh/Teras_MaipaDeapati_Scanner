@@ -4,197 +4,231 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#58151d">
   <title>Maipa Deapati — Ticket Scanner</title>
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
     :root {
-      --wine: #641c2b;
-      --wine-dark: #351018;
-      --cream: #f8f1e8;
-      --gold: #d9b46a;
-      --ink: #211619;
-      --muted: #76696b;
-      --border: #e7d9d5;
-      --success: #176b43;
-      --error: #a52d37;
+      --maroon: #58151d;
+      --maroon-dark: #351016;
+      --gold: #e7c77a;
+      --paper: #fffaf2;
+      --ink: #251719;
+      --muted: #78696a;
+      --green: #176b42;
+      --red: #a32632;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
       min-height: 100vh;
-      padding: 24px 16px;
-      background: var(--cream);
+      padding: 24px 14px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
       color: var(--ink);
+      background:
+        radial-gradient(circle at top, #7b3038 0, var(--maroon-dark) 68%);
       font-family: Arial, Helvetica, sans-serif;
     }
 
     .app {
+      width: 100%;
       max-width: 520px;
-      margin: 0 auto;
+      overflow: hidden;
+      background: var(--paper);
+      border-radius: 22px;
+      box-shadow: 0 18px 60px #0005;
     }
 
     .header {
-      padding: 24px 20px;
-      border-radius: 18px 18px 0 0;
-      color: white;
-      background: var(--wine);
+      padding: 25px 20px 22px;
       text-align: center;
-      border-bottom: 4px solid var(--gold);
+      color: white;
+      background: var(--maroon);
+      border-bottom: 3px solid var(--gold);
     }
 
     .eyebrow {
+      margin: 0 0 8px;
+      color: var(--gold);
       font-size: 11px;
+      font-weight: 800;
       letter-spacing: 3px;
       text-transform: uppercase;
-      color: #f1dba9;
     }
 
     h1 {
-      font-family: Georgia, serif;
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
       font-size: 27px;
-      margin: 10px 0 5px;
-      font-weight: normal;
+      line-height: 1.2;
     }
 
     .subtitle {
-      margin: 0;
-      color: #f3e7e5;
+      margin: 8px 0 0;
+      color: #f0dfe0;
       font-size: 13px;
     }
 
-    .panel {
-      padding: 18px;
-      background: white;
-      border: 1px solid var(--border);
-      border-top: none;
-      border-radius: 0 0 18px 18px;
-      box-shadow: 0 12px 35px #35101812;
+    .content {
+      padding: 20px;
+    }
+
+    .status-line {
+      display: flex;
+      gap: 9px;
+      align-items: center;
+      margin-bottom: 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      flex: 0 0 9px;
+      border-radius: 50%;
+      background: #b5a6a7;
+    }
+
+    .dot.ready {
+      background: #238953;
+      box-shadow: 0 0 0 4px #23895320;
     }
 
     #reader {
       width: 100%;
       overflow: hidden;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: #fff;
+      border: 1px solid #e5d7d3;
+      border-radius: 16px;
+      background: #f5eeea;
     }
 
     #reader video {
+      border-radius: 14px;
       object-fit: cover;
     }
 
-    #reader__dashboard_section_csr button,
-    #reader button {
+    #reader__dashboard_section_csr button {
       padding: 10px 14px;
       margin: 5px;
       border: 0;
-      border-radius: 8px;
+      border-radius: 9px;
       color: white;
-      background: var(--wine);
+      background: var(--maroon);
+      font-weight: 700;
       cursor: pointer;
     }
 
-    #reader select {
-      max-width: 100%;
-      padding: 8px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-    }
-
-    .status {
-      margin-top: 15px;
-      padding: 13px 14px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: #fbf8f5;
-      font-size: 14px;
-      line-height: 1.5;
-      overflow-wrap: anywhere;
-    }
-
-    .status.success {
-      border-color: #9dcdb3;
-      color: var(--success);
-      background: #eef8f1;
-    }
-
-    .status.error {
-      border-color: #e4a7ab;
-      color: var(--error);
-      background: #fff0f0;
-    }
-
-    .status.warning {
-      border-color: #e7d19b;
-      color: #795915;
-      background: #fff9e9;
+    .hint {
+      margin: 13px 0 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
     }
 
     .result {
       display: none;
-      margin-top: 14px;
-      padding: 16px;
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      margin-top: 18px;
+      padding: 17px;
+      border: 1px solid #ded1ca;
+      border-radius: 14px;
+      background: white;
     }
 
-    .result.show { display: block; }
-
-    .result h2 {
-      margin: 0 0 12px;
-      font-size: 20px;
-      font-family: Georgia, serif;
-      color: var(--wine);
+    .result.show {
+      display: block;
     }
 
-    .result-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 14px;
-      padding: 9px 0;
-      border-bottom: 1px solid #f0e8e5;
-      font-size: 14px;
+    .result.success {
+      border-color: #9acbad;
+      background: #effaf2;
     }
 
-    .result-row:last-child { border-bottom: 0; }
-
-    .result-row span:first-child { color: var(--muted); }
-
-    .result-row strong {
-      text-align: right;
-      overflow-wrap: anywhere;
+    .result.error {
+      border-color: #e3a9ad;
+      background: #fff1f1;
     }
 
-    .footer {
-      padding: 16px 8px 0;
-      text-align: center;
-      color: var(--muted);
-      font-size: 12px;
+    .result-title {
+      margin: 0 0 7px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .result.success .result-title {
+      color: var(--green);
+    }
+
+    .result.error .result-title {
+      color: var(--red);
+    }
+
+    .result-message {
+      margin: 0 0 13px;
+      font-size: 13px;
       line-height: 1.5;
     }
 
-    .small-button {
+    .details {
+      display: grid;
+      grid-template-columns: 95px 1fr;
+      gap: 8px 12px;
+      padding-top: 12px;
+      border-top: 1px solid #d9d0cc;
+      font-size: 13px;
+    }
+
+    .detail-label {
+      color: var(--muted);
+    }
+
+    .detail-value {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .scan-again {
       display: none;
       width: 100%;
       margin-top: 14px;
-      padding: 12px 16px;
-      border: none;
-      border-radius: 9px;
+      padding: 13px 16px;
+      border: 0;
+      border-radius: 11px;
       color: white;
-      background: var(--wine);
+      background: var(--maroon);
       font-size: 14px;
+      font-weight: 800;
       cursor: pointer;
     }
 
-    .small-button.show { display: block; }
+    .scan-again.show {
+      display: block;
+    }
 
-    @media (max-width: 380px) {
-      h1 { font-size: 23px; }
-      .panel { padding: 12px; }
+    .footer {
+      padding: 15px 20px;
+      border-top: 1px solid #eaded7;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    .footer strong {
+      color: var(--maroon);
+    }
+
+    .hidden {
+      display: none !important;
     }
   </style>
 </head>
@@ -202,173 +236,199 @@
 <body>
   <main class="app">
     <header class="header">
-      <div class="eyebrow">Teater Musikal</div>
+      <p class="eyebrow">Teater Musikal</p>
       <h1>Maipa Deapati</h1>
       <p class="subtitle">Official Ticket Scanner</p>
     </header>
 
-    <section class="panel">
-      <div id="reader"></div>
-
-      <div id="status" class="status">
-        Menyiapkan scanner kamera...
+    <section class="content">
+      <div class="status-line">
+        <span class="dot" id="statusDot"></span>
+        <span id="scannerStatus">Menyiapkan kamera...</span>
       </div>
 
-      <section id="result" class="result">
-        <h2 id="resultTitle">Hasil Scan</h2>
+      <div id="reader"></div>
 
-        <div class="result-row">
-          <span>Nama</span>
-          <strong id="rName">-</strong>
-        </div>
+      <p class="hint" id="scanHint">
+        Arahkan kamera ke QR tiket. Validasi dilakukan otomatis
+        setelah QR terbaca.
+      </p>
 
-        <div class="result-row">
-          <span>Kategori</span>
-          <strong id="rCategory">-</strong>
-        </div>
+      <section class="result" id="result" aria-live="polite">
+        <h2 class="result-title" id="resultTitle">Hasil validasi</h2>
+        <p class="result-message" id="resultMessage"></p>
 
-        <div class="result-row">
-          <span>Sesi</span>
-          <strong id="rSession">-</strong>
-        </div>
+        <div class="details" id="ticketDetails">
+          <span class="detail-label">Nama</span>
+          <span class="detail-value" id="ticketName">—</span>
 
-        <div class="result-row">
-          <span>Kursi</span>
-          <strong id="rSeat">-</strong>
-        </div>
+          <span class="detail-label">Kategori</span>
+          <span class="detail-value" id="ticketCategory">—</span>
 
-        <div class="result-row">
-          <span>Waktu</span>
-          <strong id="rTime">-</strong>
+          <span class="detail-label">Sesi</span>
+          <span class="detail-value" id="ticketSession">—</span>
+
+          <span class="detail-label">Kursi</span>
+          <span class="detail-value" id="ticketSeat">—</span>
+
+          <span class="detail-label">Check-in</span>
+          <span class="detail-value" id="ticketTime">—</span>
         </div>
       </section>
 
-      <button id="resumeButton" class="small-button" type="button">
+      <button class="scan-again" id="scanAgain" type="button">
         Scan Tiket Berikutnya
       </button>
-
-      <div class="footer">
-        Arahkan kamera ke QR tiket penonton.<br>
-        Jangan gunakan screenshot hasil scan sebagai bukti check-in.
-      </div>
     </section>
+
+    <footer class="footer">
+      <strong>MAIPA DEAPATI</strong><br>
+      Pastikan status tiket berhasil sebelum penonton memasuki area acara.
+    </footer>
   </main>
 
   <script>
-    /*
-     * WAJIB: isi dengan URL deployment WEB APP Apps Script
-     * yang berakhiran /exec, bukan /dev.
-     */
-    const API_URL = "https://script.google.com/macros/s/AKfycbyGNIAQk0W5LxvhfZf0dC9zaRdQL29KG1nE7Xtpe_1ghx_vifxRN8bzVjbQdIM0Gonr/exec";
+    "use strict";
 
-    const statusEl = document.getElementById("status");
-    const resultEl = document.getElementById("result");
-    const resumeButton = document.getElementById("resumeButton");
+    // URL deployment Apps Script yang diberikan.
+    const API_URL =
+      "https://script.google.com/macros/s/AKfycbyGNIAQk0W5LxvhfZf0dC9zaRdQL29KG1nE7Xtpe_1ghx_vifxRN8bzVjbQdIM0Gonr/exec";
+
+    const scannerStatus = document.getElementById("scannerStatus");
+    const statusDot = document.getElementById("statusDot");
+    const resultBox = document.getElementById("result");
+    const resultTitle = document.getElementById("resultTitle");
+    const resultMessage = document.getElementById("resultMessage");
+    const scanAgainButton = document.getElementById("scanAgain");
+    const scanHint = document.getElementById("scanHint");
 
     let scanner = null;
-    let scannerRunning = false;
-    let requestInProgress = false;
-    let lastScannedToken = "";
-    let lastScannedAt = 0;
+    let isProcessing = false;
+    let isScannerRunning = false;
+    let lastToken = "";
+    let lastScanAt = 0;
 
-    function setStatus(message, type = "") {
-      statusEl.className = "status" + (type ? " " + type : "");
-      statusEl.textContent = message;
+    function setScannerStatus(message, ready = false) {
+      scannerStatus.textContent = message;
+      statusDot.classList.toggle("ready", ready);
+    }
+
+    function safeText(value) {
+      return value === undefined || value === null || value === ""
+        ? "—"
+        : String(value);
     }
 
     function showResult(data) {
-      document.getElementById("resultTitle").textContent =
-        data.alreadyUsed ? "Tiket Sudah Digunakan" :
-        data.success ? "Check-in Berhasil" : "Check-in Gagal";
+      const success = data.success === true;
+      const alreadyUsed = data.alreadyUsed === true;
 
-      document.getElementById("rName").textContent = data.name || "-";
-      document.getElementById("rCategory").textContent = data.category || "-";
-      document.getElementById("rSession").textContent = data.session || "-";
-      document.getElementById("rSeat").textContent = data.seat || "-";
+      resultBox.className =
+        "result show " + (success ? "success" : "error");
 
-      const rawTime = data.checkedInAt || "";
-      let formattedTime = "-";
-
-      if (rawTime) {
-        const date = new Date(rawTime);
-        formattedTime = isNaN(date.getTime())
-          ? rawTime
-          : date.toLocaleString("id-ID", {
-              dateStyle: "medium",
-              timeStyle: "short"
-            });
+      if (!success) {
+        resultTitle.textContent = "TIKET TIDAK VALID";
+      } else if (alreadyUsed) {
+        resultTitle.textContent = "TIKET SUDAH DIGUNAKAN";
+      } else {
+        resultTitle.textContent = "CHECK-IN BERHASIL";
       }
 
-      document.getElementById("rTime").textContent = formattedTime;
-      resultEl.classList.add("show");
+      resultMessage.textContent =
+        data.message || "Tidak ada keterangan dari server.";
+
+      document.getElementById("ticketName").textContent =
+        safeText(data.name);
+
+      document.getElementById("ticketCategory").textContent =
+        safeText(data.category);
+
+      document.getElementById("ticketSession").textContent =
+        safeText(data.session);
+
+      document.getElementById("ticketSeat").textContent =
+        safeText(data.seat);
+
+      document.getElementById("ticketTime").textContent =
+        formatTime(data.checkedInAt);
+
+      scanAgainButton.classList.add("show");
+      scanHint.textContent =
+        "Hasil pemindaian sudah diterima. Tekan tombol di bawah untuk scan berikutnya.";
+    }
+
+    function formatTime(value) {
+      if (!value) return "—";
+
+      const date = new Date(value);
+
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+
+      return date.toLocaleString("id-ID", {
+        dateStyle: "medium",
+        timeStyle: "medium",
+        timeZone: "Asia/Jakarta"
+      });
     }
 
     function validateToken(token) {
       return /^[a-f0-9]{40}$/i.test(String(token || "").trim());
     }
 
-    /*
-     * JSONP avoids fetch/CORS restrictions when the scanner
-     * is hosted on GitHub Pages and Apps Script is the API.
-     */
-    function callCheckInApi(token) {
+    // JSONP: avoids browser CORS restrictions for this Apps Script endpoint.
+    // The callback name is a fixed JavaScript identifier accepted by Code.gs.
+    function callCheckInAPI(token) {
       return new Promise((resolve, reject) => {
-        if (!API_URL || API_URL.includes("PASTE_URL")) {
-          reject(new Error("URL deployment Apps Script belum diisi di index.html."));
-          return;
-        }
-
-        if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(API_URL)) {
-          reject(new Error("URL harus berupa URL Web App Apps Script yang berakhiran /exec."));
-          return;
-        }
-
-        const callbackName =
-          "ticketCallback_" + Date.now() + "_" +
-          Math.random().toString(36).slice(2);
-
+        const callbackName = "maipaCheckInCallback";
         const script = document.createElement("script");
+
         let finished = false;
 
-        const cleanup = () => {
-          if (script.parentNode) script.parentNode.removeChild(script);
-          try { delete window[callbackName]; } catch (_) {
+        function cleanup() {
+          if (script.parentNode) {
+            script.parentNode.removeChild(script);
+          }
+
+          try {
+            delete window[callbackName];
+          } catch (_) {
             window[callbackName] = undefined;
           }
+
+          clearTimeout(timeoutId);
+        }
+
+        function finish(callback, value) {
+          if (finished) return;
+          finished = true;
+          cleanup();
+          callback(value);
+        }
+
+        window[callbackName] = function (data) {
+          finish(resolve, data);
+        };
+
+        script.onerror = function () {
+          finish(
+            reject,
+            new Error(
+              "Browser gagal memuat respons Apps Script. " +
+              "Periksa URL deployment dan akses web app."
+            )
+          );
         };
 
         const timeoutId = setTimeout(() => {
-          if (finished) return;
-          finished = true;
-          cleanup();
-          reject(new Error(
-            "Tidak menerima respons Apps Script. Periksa URL deployment, akses Web App, dan izin akun."
-          ));
+          finish(
+            reject,
+            new Error(
+              "Server tidak merespons. Periksa deployment Apps Script."
+            )
+          );
         }, 15000);
-
-        window[callbackName] = data => {
-          if (finished) return;
-          finished = true;
-          clearTimeout(timeoutId);
-          cleanup();
-
-          if (!data || typeof data !== "object") {
-            reject(new Error("Respons server tidak valid."));
-            return;
-          }
-
-          resolve(data);
-        };
-
-        script.onerror = () => {
-          if (finished) return;
-          finished = true;
-          clearTimeout(timeoutId);
-          cleanup();
-          reject(new Error(
-            "Browser gagal memuat respons Apps Script. Periksa URL deployment dan akses Web App."
-          ));
-        };
 
         script.src =
           API_URL +
@@ -381,136 +441,145 @@
       });
     }
 
-    async function handleScan(decodedText) {
+    async function onQrDetected(decodedText) {
       const token = String(decodedText || "").trim();
-
-      // Ignore QR content that isn't a ticket token.
-      if (!validateToken(token)) {
-        setStatus("QR terbaca, tetapi bukan QR tiket Maipa Deapati.", "warning");
-        return;
-      }
-
-      // Prevent duplicate camera callbacks for the same frame/ticket.
       const now = Date.now();
-      if (requestInProgress) return;
 
-      if (token === lastScannedToken && now - lastScannedAt < 5000) {
-        return;
-      }
+      // Prevent duplicate callbacks from the same QR while processing.
+      if (isProcessing) return;
 
-      requestInProgress = true;
-      lastScannedToken = token;
-      lastScannedAt = now;
+      // Avoid immediately reprocessing the same QR after the scanner resumes.
+      if (token === lastToken && now - lastScanAt < 5000) return;
 
-      setStatus("QR terbaca. Memvalidasi tiket ke server...", "warning");
-      resumeButton.classList.remove("show");
+      isProcessing = true;
+      lastToken = token;
+      lastScanAt = now;
+
+      setScannerStatus("QR terbaca. Memvalidasi tiket...", false);
 
       try {
-        const data = await callCheckInApi(token);
+        // Stop camera scanning while the server validates this QR.
+        await stopScanner();
 
-        showResult(data);
+        if (!validateToken(token)) {
+          showResult({
+            success: false,
+            alreadyUsed: false,
+            message: "Format QR tidak dikenali sebagai QR tiket Maipa Deapati."
+          });
+          setScannerStatus("QR tidak valid.", false);
+          return;
+        }
 
-        if (data.success && data.alreadyUsed) {
-          setStatus(
-            "PERHATIAN: tiket ini sudah pernah di-scan. Check-in tidak ditambahkan lagi.",
-            "warning"
-          );
-        } else if (data.success) {
-          setStatus(
-            "Check-in berhasil. Penonton sudah tercatat di spreadsheet.",
-            "success"
-          );
+        const response = await callCheckInAPI(token);
+
+        if (!response || typeof response.success !== "boolean") {
+          throw new Error("Format respons server tidak dikenali.");
+        }
+
+        showResult(response);
+
+        if (response.success && !response.alreadyUsed) {
+          setScannerStatus("Tiket valid. Check-in berhasil.", true);
+        } else if (response.alreadyUsed) {
+          setScannerStatus("Tiket sudah pernah digunakan.", false);
         } else {
-          setStatus(data.message || "Check-in gagal.", "error");
+          setScannerStatus("Validasi gagal.", false);
         }
 
       } catch (error) {
-        setStatus(error.message || "Gagal menghubungi server.", "error");
+        showResult({
+          success: false,
+          alreadyUsed: false,
+          message: error && error.message
+            ? error.message
+            : "Gagal memvalidasi QR."
+        });
+
+        setScannerStatus("Gagal menghubungi server.", false);
+
       } finally {
-        requestInProgress = false;
-
-        // Stop camera after reading one QR to prevent repeat check-ins.
-        if (scanner && scannerRunning) {
-          try {
-            await scanner.stop();
-            scannerRunning = false;
-          } catch (_) {}
-        }
-
-        resumeButton.classList.add("show");
+        scanAgainButton.classList.add("show");
       }
     }
 
     async function startScanner() {
-      resultEl.classList.remove("show");
-      resumeButton.classList.remove("show");
-      lastScannedToken = "";
-      lastScannedAt = 0;
-      requestInProgress = false;
+      resultBox.className = "result";
+      scanAgainButton.classList.remove("show");
+      scanHint.textContent =
+        "Arahkan kamera ke QR tiket. Validasi dilakukan otomatis setelah QR terbaca.";
 
-      if (!window.Html5Qrcode) {
-        setStatus(
-          "Library scanner gagal dimuat. Periksa koneksi internet dan reload halaman.",
-          "error"
-        );
-        return;
-      }
+      setScannerStatus("Memulai kamera...", false);
 
       try {
         if (!scanner) {
           scanner = new Html5Qrcode("reader");
         }
 
-        setStatus("Meminta akses kamera...", "warning");
-
         await scanner.start(
           { facingMode: "environment" },
           {
             fps: 10,
-            qrbox: function(viewWidth, viewHeight) {
-              const size = Math.floor(Math.min(viewWidth, viewHeight) * 0.72);
+            qrbox: function (viewfinderWidth, viewfinderHeight) {
+              const size = Math.floor(
+                Math.min(viewfinderWidth, viewfinderHeight) * 0.72
+              );
+
               return { width: size, height: size };
             },
             aspectRatio: 1.0
           },
-          handleScan,
-          function() {
-            // Ignore frames without a QR code.
+          onQrDetected,
+          function () {
+            // Ignore frames that do not contain a QR code.
           }
         );
 
-        scannerRunning = true;
-        setStatus("Kamera aktif. Arahkan ke QR tiket.", "success");
+        isScannerRunning = true;
+        setScannerStatus("Kamera aktif. Siap scan QR.", true);
 
       } catch (error) {
-        scannerRunning = false;
-        setStatus(
-          "Kamera tidak dapat dibuka. Izinkan akses kamera, gunakan HTTPS, " +
-          "dan pastikan kamera tidak sedang dipakai aplikasi lain. " +
-          (error && error.message ? error.message : ""),
-          "error"
+        isScannerRunning = false;
+        setScannerStatus(
+          "Kamera gagal dibuka. Izinkan akses kamera dan gunakan HTTPS.",
+          false
         );
+
+        resultBox.className = "result show error";
+        resultTitle.textContent = "KAMERA TIDAK TERSEDIA";
+        resultMessage.textContent =
+          error && error.message
+            ? error.message
+            : "Pastikan browser mendukung kamera dan izin kamera sudah diberikan.";
+        scanAgainButton.classList.add("show");
       }
     }
 
-    resumeButton.addEventListener("click", startScanner);
+    async function stopScanner() {
+      if (!scanner || !isScannerRunning) return;
 
-    window.addEventListener("load", () => {
-      if (!API_URL || API_URL.includes("PASTE_URL")) {
-        setStatus(
-          "Isi URL Web App Apps Script di konstanta API_URL pada index.html terlebih dahulu.",
-          "error"
-        );
+      try {
+        await scanner.stop();
+      } catch (_) {
+        // Scanner may already be stopped.
       }
 
-      startScanner();
+      isScannerRunning = false;
+    }
+
+    scanAgainButton.addEventListener("click", async function () {
+      if (isProcessing) {
+        isProcessing = false;
+      }
+
+      lastToken = "";
+      lastScanAt = 0;
+
+      await startScanner();
     });
 
-    window.addEventListener("pagehide", async () => {
-      if (scanner && scannerRunning) {
-        try { await scanner.stop(); } catch (_) {}
-      }
-    });
+    // Start scanning automatically when the page opens.
+    window.addEventListener("load", startScanner);
   </script>
 </body>
 </html>
